@@ -1,21 +1,18 @@
-FROM python:3.11-slim
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy package files
+COPY package.json ./
 
-# Copy application files
-COPY app.py .
-COPY backend.py .
-COPY .env .
+# Install dependencies
+RUN npm install
 
-# Copy data directory with embeddings and CSV
-COPY data/ ./data/
+# Copy the rest of the application
+COPY . .
 
-# Expose Streamlit default port
-EXPOSE 8501
+# Expose port
+EXPOSE 3000
 
-# Run Streamlit app
-CMD ["streamlit", "run", "app.py", "--server.address", "0.0.0.0", "--server.port", "8501"]
+# Start the development server
+CMD ["npm", "run", "dev"]

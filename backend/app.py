@@ -1,11 +1,27 @@
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import os
 import numpy as np
 import csv
 from dotenv import load_dotenv
 from openai import AzureOpenAI
-from datetime import datetime
+from download_data import setup_data
 
 load_dotenv()
+
+setup_data()
+
+app = FastAPI()
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify your Next.js domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Configuration
 AZURE_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
@@ -53,16 +69,34 @@ with open(CSV_PATH, "r", encoding="utf-8") as csvfile:
         })
 print(f"Loaded {len(movies_data)} movies")
 
+
 def cosine_similarity(a, b):
     """Calculate cosine similarity between two vectors"""
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
-def ask_question(question: str):
+
+class QuestionRequest(BaseModel):
+    question: str
+
+
+class AnswerResponse(BaseModel):
+    answer: str
+
+
+@app.get("/")
+async def root():
+    return {"message": "IMDB AI Backend is running"}
+
+
+@app.post("/ask", response_model=AnswerResponse)
+async def ask_question(request: QuestionRequest):
     """
-    Main function to ask questions to the LLM based on embeddings
+    Main endpoint to ask questions to the LLM based on embeddings
     Returns the answer from the LLM
     """
     try:
+        question = request.question
+        
         # Generate embedding for the question
         emb = client.embeddings.create(
             model=EMBED_MODEL,
@@ -81,7 +115,7 @@ def ask_question(question: str):
         top_indices = [idx for idx, _ in similarities[:TOP_K]]
         
         if not top_indices:
-            return "No se encontraron documentos similares."
+            return AnswerResponse(answer="No se encontraron documentos similares.")
 
         context_parts = []
         for idx in top_indices:
@@ -128,7 +162,12 @@ def ask_question(question: str):
         )
 
         answer = response.choices[0].message.content
-        return answer
+        return AnswerResponse(answer=answer)
         
     except Exception as e:
-        return f"Error: {str(e)}"
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
